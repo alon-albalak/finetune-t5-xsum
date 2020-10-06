@@ -1,0 +1,12 @@
+
+# local config files
+venv*
+.vscode*
+__pycache__*
+
+# results files
+testing.json
+bs*
+
+# misc. files
+t5_summarization.py
