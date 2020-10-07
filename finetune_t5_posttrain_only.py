@@ -14,18 +14,18 @@ if torch.cuda.is_available():
 MAX_GPU_SAMPLES = 4
 
 logger_fields = {
-    "training_loss":[],
+    "training_loss": [],
     "validation": {},
-    "test":[],
+    "test": [],
     "metadata": {},
     "errors": []
-    }
+}
 
 
 def main(config):
-    logger = utils.simple_logger(config.log_path, logger_fields)
+    logger = utils.simple_logger(config)
 
-    if os.path.isdir(os.path.join(os.path.abspath(__file__),config.model_path)):
+    if os.path.isdir(os.path.join(os.path.abspath(__file__), config.model_path)):
         print(f"loading model from {config.model_path}")
         model = T5ForConditionalGeneration.from_pretrained(config.model_path)
     else:

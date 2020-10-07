@@ -16,8 +16,9 @@ DECODING_BEAMS = 2
 
 
 class simple_logger():
-    def __init__(self, save_path, fields, config):
-        self.save_path = os.path.join(os.path.abspath(os.getcwd()), save_path)
+    def __init__(self, config):
+        self.save_path = os.path.join(
+            os.path.abspath(os.getcwd()), config.log_path)
 
         if os.path.isfile(self.save_path):
             print(f"Loading log from {self.save_path}")

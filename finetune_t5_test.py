@@ -16,14 +16,14 @@ MAX_GPU_SAMPLES = 4
 logger_fields = {
     "training_loss": [],
     "validation": {},
-    "test":[],
+    "test": [],
     "metadata": {},
     "errors": []
 }
 
 
 def main(config):
-    logger = utils.simple_logger(config.log_path, logger_fields)
+    logger = utils.simple_logger(config)
 
     if os.path.isdir(os.path.join(os.path.abspath(__file__), config.model_path)):
         print(f"loading model from {config.model_path}")
@@ -42,7 +42,7 @@ def main(config):
         test_set, batch_size=MAX_GPU_SAMPLES*8, shuffle=False
     )
     utils.test(model, device, test_loader,
-                tokenizer, logger)
+               tokenizer, logger)
 
 
 if __name__ == "__main__":

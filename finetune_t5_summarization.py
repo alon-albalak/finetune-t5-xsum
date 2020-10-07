@@ -16,7 +16,7 @@ MAX_GPU_SAMPLES = int(os.environ.get("MAX_GPU_SAMPLES"))
 
 
 def main(config):
-    logger = utils.simple_logger(config.log_path, config)
+    logger = utils.simple_logger(config)
 
     if os.path.isdir(os.path.join(os.path.abspath(__file__), config.model_path)):
         print(f"loading model from {config.model_path}")
