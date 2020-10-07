@@ -265,19 +265,20 @@ def evaluate_batch(model, y, x_ids, x_mask, tokenizer, docs, logger, bleu, rouge
     return batch
 
 
-def plot_training_loss(log_files):
+def plot_training_loss(log_files, running_mean_lag=100):
     for l in log_files:
         tmp = json.load(open(l))
         base_label = l.split("/")[-1].split(".")[0]
         plt.plot([t[1] for t in tmp['training_loss']], label=base_label)
         plt.plot(running_mean([t[1]
-                               for t in tmp['training_loss']], 50), label=base_label+" smoothed")
+                               for t in tmp['training_loss']], running_mean_lag), label=base_label+" smoothed")
 
     plt.legend()
     plt.show()
 
 
-def plot_metrics(log_files, running_mean_lag=100):
+def plot_training_metrics(log_files, running_mean_lag=100):
+    plot_training_loss(log_files, running_mean_lag)
 
     all_metrics = {}
     for l in log_files:
