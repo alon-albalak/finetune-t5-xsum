@@ -37,13 +37,12 @@ def main(config):
     xsum = datasets.load_dataset('xsum')
     test_dataset = xsum['test']
 
-    if config.validate:
-        test_set = utils.XSUM_dataset(test_dataset, tokenizer)
-        test_loader = DataLoader(
-            test_set, batch_size=MAX_GPU_SAMPLES*8, shuffle=False
-        )
-        utils.test(model, device, test_loader,
-                   tokenizer, logger)
+    test_set = utils.XSUM_dataset(test_dataset, tokenizer)
+    test_loader = DataLoader(
+        test_set, batch_size=MAX_GPU_SAMPLES*8, shuffle=False
+    )
+    utils.test(model, device, test_loader,
+                tokenizer, logger)
 
 
 if __name__ == "__main__":
