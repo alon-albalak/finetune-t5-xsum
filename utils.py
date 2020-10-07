@@ -1,6 +1,7 @@
 import json
 import os
 import copy
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torch.cuda.amp import GradScaler, autocast
@@ -8,7 +9,6 @@ import datasets
 from bert_score import score as bertscore
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from numpy import mean
 
 MAX_SOURCE_LEN = 512
 MAX_SUMMARY_LEN = 150
@@ -160,6 +160,32 @@ def validate(label, model, device, data_loader, tokenizer, logger):
 
             if i % 10 == 0:
                 logger.save()
+    logger.save()
+
+
+def test(model, device, data_loader, tokenizer, logger):
+    experiment_id = logger.logger['metadata']['model_path']
+    bleu_metric = datasets.load_metric('bleu', experiment_id=experiment_id)
+    rouge_metric = datasets.load_metric('rouge', experiment_id=experiment_id)
+    bertscore_metric = bertscore
+
+    model.eval()
+
+    with torch.no_grad():
+        for i, data in enumerate(tqdm(data_loader), 1):
+            y = data['target_ids'].to(device)
+
+            x_ids = data['input_ids'].to(device)
+            x_mask = data['input_mask'].to(device)
+
+            batch_evaluation = evaluate_batch(
+                model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_metric)
+
+            logger.logger['test'].extend(batch_evaluation)
+
+            if i % 10 == 0:
+                logger.save()
+    logger.save()
 
 
 def evaluate_batch(model, y, x_ids, x_mask, tokenizer, docs, logger, bleu, rouge, bertscore):
@@ -233,7 +259,10 @@ def evaluate_batch(model, y, x_ids, x_mask, tokenizer, docs, logger, bleu, rouge
 def plot_training_loss(log_files):
     for l in log_files:
         tmp = json.load(open(l))
-        plt.plot([t[1] for t in tmp['training_loss']], label=l)
+        base_label = l.split("/")[-1].split(".")[0]
+        plt.plot([t[1] for t in tmp['training_loss']], label=base_label)
+        plt.plot(running_mean([t[1]
+                               for t in tmp['training_loss']], 50), label=base_label+" smoothed")
 
     plt.legend()
     plt.show()
@@ -278,7 +307,10 @@ def plot_metrics(log_files):
 
     for m in metric_names:
         for log_file in all_metrics:
-            plt.plot(all_metrics[log_file][m], label=log_file.split("/")[-1])
+            base_label = log_file.split("/")[-1].split(".")[0]
+            plt.plot(all_metrics[log_file][m], label=base_label, alpha=0.5)
+            plt.plot(running_mean(
+                all_metrics[log_file][m], 10), label=base_label+" smoothed")
 
         plt.title(m)
         plt.legend()
@@ -336,8 +368,9 @@ def plot_metrics_pre_post_training(log_files):
             post[l]['bertscore_recall'].append(t['bert_recall'])
             post[l]['bertscore_f1'].append(t['bert_F1'])
 
-    pre_means = [[mean(pre[l][m]) for m in metric_names] for l in log_files]
-    post_means = [[mean(post[l][m]) for m in metric_names] for l in log_files]
+    pre_means = [[np.mean(pre[l][m]) for m in metric_names] for l in log_files]
+    post_means = [[np.mean(post[l][m]) for m in metric_names]
+                  for l in log_files]
 
     width = 0.2
     ind = list(range(len(metric_names)))
@@ -354,3 +387,9 @@ def plot_metrics_pre_post_training(log_files):
     plt.xticks([i+width/2 for i in ind], metric_names, rotation=45)
     plt.legend()
     plt.show()
+
+
+def running_mean(x, N):
+    new_x = x[:N-1]
+    cumsum = np.cumsum(np.insert(x, 0, 0))
+    return np.concatenate((new_x, (cumsum[N:] - cumsum[:-N]) / float(N)))

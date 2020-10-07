@@ -18,6 +18,7 @@ MAX_GPU_SAMPLES = int(os.environ.get("MAX_GPU_SAMPLES"))
 logger_fields = {
     "training_loss": [],
     "validation": {},
+    "test": [],
     "metadata": {},
     "errors": []
 }
@@ -81,6 +82,11 @@ def main(config):
         )
         utils.validate("post", model, device, validation_loader,
                        tokenizer, logger)
+
+    test_set = utils.XSUM_dataset(test_dataset, tokenizer)
+    test_loader = DataLoader(
+        test_set, batch_size=MAX_GPU_SAMPLES*8, shuffle=False)
+    utils.test(model, device, test_loader, tokenizer, logger)
 
 
 if __name__ == "__main__":
