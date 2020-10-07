@@ -277,14 +277,7 @@ def plot_training_loss(log_files):
     plt.show()
 
 
-def plot_metrics(log_files):
-    metric_names = ['bleu',
-                    'bleu_precision',
-                    'rouge1',
-                    'rougeL',
-                    'bertscore_precision',
-                    'bertscore_recall',
-                    'bertscore_f1']
+def plot_metrics(log_files, running_mean_lag=100):
 
     all_metrics = {}
     for l in log_files:
@@ -292,8 +285,9 @@ def plot_metrics(log_files):
         metrics = {
             'bleu': [],
             'bleu_precision': [],
-            'rouge1': [],
-            'rougeL': [],
+            'rouge1': {"precision": [], "recall": [], "F1": []},
+            'rouge2': {"precision": [], "recall": [], "F1": []},
+            'rougeL': {"precision": [], "recall": [], "F1": []},
             'bertscore_precision': [],
             'bertscore_recall': [],
             'bertscore_f1': []
@@ -302,28 +296,76 @@ def plot_metrics(log_files):
             if len(t) > 2:
                 # Add all metrics to metrics
                 for i in range(len(t[2])):
+                    # BLEU score
                     if 'bleu' in t[2][i]['bleu'].keys():
                         metrics['bleu'].append(t[2][i]['bleu']['bleu'])
                         metrics['bleu_precision'].append(
                             t[2][i]['bleu']['precisions'][0])
-                    metrics['rouge1'].append(t[2][i]['rouge']['rouge1'][0][0])
-                    metrics['rougeL'].append(t[2][i]['rouge']['rougeL'][0][0])
+                    # ROUGE score
+                    # ROUGE unigram
+                    metrics['rouge1']['precision'].append(
+                        t[2][i]['rouge']['rouge1'][0][0])
+                    metrics['rouge1']['precision'].append(
+                        t[2][i]['rouge']['rouge1'][0][1])
+                    metrics['rouge1']['precision'].append(
+                        t[2][i]['rouge']['rouge1'][0][2])
+                    # ROUGE bigram
+                    metrics['rouge2']['precision'].append(
+                        t[2][i]['rouge']['rouge2'][0][0])
+                    metrics['rouge2']['precision'].append(
+                        t[2][i]['rouge']['rouge2'][0][1])
+                    metrics['rouge2']['precision'].append(
+                        t[2][i]['rouge']['rouge2'][0][2])
+                    # ROUGE longest common subsequence
+                    metrics['rougeL']['precision'].append(
+                        t[2][i]['rouge']['rougeL'][0][0])
+                    metrics['rougeL']['precision'].append(
+                        t[2][i]['rouge']['rougeL'][0][1])
+                    metrics['rougeL']['precision'].append(
+                        t[2][i]['rouge']['rougeL'][0][2])
+
+                    # BERTSCORE
                     metrics['bertscore_precision'].append(
                         t[2][i]['bert_precision'])
                     metrics['bertscore_recall'].append(t[2][i]['bert_recall'])
                     metrics['bertscore_f1'].append(t[2][i]['bert_F1'])
         all_metrics[l] = metrics
 
-    for m in metric_names:
-        for log_file in all_metrics:
-            base_label = log_file.split("/")[-1].split(".")[0]
-            plt.plot(all_metrics[log_file][m], label=base_label, alpha=0.5)
+    # Plot bleu scores
+    for log_file in all_metrics:
+        for b in ['bleu', 'bleu_precision']:
+            base_label = log_file.split("/")[-1].split(".")[0]+" "+b
+            plt.plot(all_metrics[log_file][b], label=base_label, alpha=0.5)
             plt.plot(running_mean(
-                all_metrics[log_file][m], 10), label=base_label+" smoothed")
+                all_metrics[log_file][b], running_mean_lag), label=base_label+" smoothed")
 
-        plt.title(m)
-        plt.legend()
-        plt.show()
+    plt.title('BLEU scores')
+    plt.legend()
+    plt.show()
+
+    for log_file in all_metrics:
+        for b in ['rouge1', 'rouge2', 'rougeL']:
+            for m in ['precision', 'recall', 'F1']:
+                base_label = log_file.split("/")[-1].split(".")[0]+f"{b} {m}"
+                plt.plot(all_metrics[log_file][b][m],
+                         label=base_label, alpha=0.5)
+                plt.plot(running_mean(
+                    all_metrics[log_file][b][m], running_mean_lag), label=base_label+" smoothed")
+
+    plt.title('ROUGE scores')
+    plt.legend()
+    plt.show()
+
+    for log_file in all_metrics:
+        for b in ['bertscore_precision', 'bertscore_recall', 'bertscore_f1']:
+            base_label = log_file.split("/")[-1].split(".")[0]+" "+b
+            plt.plot(all_metrics[log_file][b], label=base_label, alpha=0.5)
+            plt.plot(running_mean(
+                all_metrics[log_file][b], running_mean_lag), label=base_label+" smoothed")
+
+    plt.title('BERT scores')
+    plt.legend()
+    plt.show()
 
 
 def plot_metrics_pre_post_training(log_files):
