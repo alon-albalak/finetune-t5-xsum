@@ -12,23 +12,11 @@ device = 'cpu'
 if torch.cuda.is_available():
     device = 'cuda'
 
-
 MAX_GPU_SAMPLES = int(os.environ.get("MAX_GPU_SAMPLES"))
-
-logger_fields = {
-    "training_loss": [],
-    "validation": {},
-    "test": [],
-    "metadata": {},
-    "errors": []
-}
 
 
 def main(config):
-    logger = utils.simple_logger(config.log_path, logger_fields)
-    logger.logger['metadata'] = {arg: getattr(
-        config, arg) for arg in vars(config)}
-    logger.logger['validation'] = {}
+    logger = utils.simple_logger(config.log_path, config)
 
     if os.path.isdir(os.path.join(os.path.abspath(__file__), config.model_path)):
         print(f"loading model from {config.model_path}")

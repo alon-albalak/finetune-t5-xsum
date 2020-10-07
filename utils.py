@@ -16,7 +16,7 @@ DECODING_BEAMS = 2
 
 
 class simple_logger():
-    def __init__(self, save_path, fields):
+    def __init__(self, save_path, fields, config):
         self.save_path = os.path.join(os.path.abspath(os.getcwd()), save_path)
 
         if os.path.isfile(self.save_path):
@@ -25,7 +25,15 @@ class simple_logger():
 
         else:
             print(f"Initializing log at {self.save_path}")
-            self.logger = fields
+            self.logger = {
+                "training_loss": [],
+                "validation": {},
+                "test": [],
+                "metadata": {},
+                "errors": []
+            }
+            self.logger['metadata'] = {arg: getattr(
+                config, arg) for arg in vars(config)}
             self.save()
 
     def save(self):
