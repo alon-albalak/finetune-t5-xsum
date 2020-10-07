@@ -11,7 +11,7 @@ device = 'cpu'
 if torch.cuda.is_available():
     device = 'cuda'
 
-MAX_GPU_SAMPLES = 4
+MAX_GPU_SAMPLES = int(os.environ.get("MAX_GPU_SAMPLES"))
 
 logger_fields = {
     "training_loss": [],
