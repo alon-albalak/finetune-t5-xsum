@@ -22,6 +22,7 @@ def main(config):
         print(f"loading model from {config.model_path}")
         model = T5ForConditionalGeneration.from_pretrained(config.model_path)
     else:
+        print("Initializing model")
         model = T5ForConditionalGeneration.from_pretrained('t5-base')
 
     model.to(device)

@@ -13,6 +13,21 @@ import matplotlib.pyplot as plt
 MAX_SOURCE_LEN = 512
 MAX_SUMMARY_LEN = 150
 DECODING_BEAMS = 2
+METRICS = [
+    'bleu',
+    'bleu_precision',
+    'rouge1_precision',
+    "rouge1_recall",
+    "rouge1_F1",
+    'rouge2_precision',
+    "rouge2_recall",
+    "rouge2_F1",
+    'rougeL_precision',
+    "rougeL_recall",
+    "rougeL_F1",
+    'bertscore_precision',
+    'bertscore_recall',
+    'bertscore_f1']
 
 
 class simple_logger():
@@ -283,53 +298,13 @@ def plot_training_metrics(log_files, running_mean_lag=100):
     all_metrics = {}
     for l in log_files:
         tmp = json.load(open(l))
-        metrics = {
-            'bleu': [],
-            'bleu_precision': [],
-            'rouge1': {"precision": [], "recall": [], "F1": []},
-            'rouge2': {"precision": [], "recall": [], "F1": []},
-            'rougeL': {"precision": [], "recall": [], "F1": []},
-            'bertscore_precision': [],
-            'bertscore_recall': [],
-            'bertscore_f1': []
-        }
+        metrics = {m: [] for m in METRICS}
         for t in tmp['training_loss']:
             if len(t) > 2:
                 # Add all metrics to metrics
-                for i in range(len(t[2])):
-                    # BLEU score
-                    if 'bleu' in t[2][i]['bleu'].keys():
-                        metrics['bleu'].append(t[2][i]['bleu']['bleu'])
-                        metrics['bleu_precision'].append(
-                            t[2][i]['bleu']['precisions'][0])
-                    # ROUGE score
-                    # ROUGE unigram
-                    metrics['rouge1']['precision'].append(
-                        t[2][i]['rouge']['rouge1'][0][0])
-                    metrics['rouge1']['precision'].append(
-                        t[2][i]['rouge']['rouge1'][0][1])
-                    metrics['rouge1']['precision'].append(
-                        t[2][i]['rouge']['rouge1'][0][2])
-                    # ROUGE bigram
-                    metrics['rouge2']['precision'].append(
-                        t[2][i]['rouge']['rouge2'][0][0])
-                    metrics['rouge2']['precision'].append(
-                        t[2][i]['rouge']['rouge2'][0][1])
-                    metrics['rouge2']['precision'].append(
-                        t[2][i]['rouge']['rouge2'][0][2])
-                    # ROUGE longest common subsequence
-                    metrics['rougeL']['precision'].append(
-                        t[2][i]['rouge']['rougeL'][0][0])
-                    metrics['rougeL']['precision'].append(
-                        t[2][i]['rouge']['rougeL'][0][1])
-                    metrics['rougeL']['precision'].append(
-                        t[2][i]['rouge']['rougeL'][0][2])
-
-                    # BERTSCORE
-                    metrics['bertscore_precision'].append(
-                        t[2][i]['bert_precision'])
-                    metrics['bertscore_recall'].append(t[2][i]['bert_recall'])
-                    metrics['bertscore_f1'].append(t[2][i]['bert_F1'])
+                tmp_metrics = get_bleu_rouge_bert_metrics(t[2])
+                for m in tmp_metrics:
+                    metrics[m].extend(tmp_metrics[m])
         all_metrics[l] = metrics
 
     # Plot bleu scores
@@ -348,10 +323,10 @@ def plot_training_metrics(log_files, running_mean_lag=100):
         for b in ['rouge1', 'rouge2', 'rougeL']:
             for m in ['precision', 'recall', 'F1']:
                 base_label = log_file.split("/")[-1].split(".")[0]+f"{b} {m}"
-                plt.plot(all_metrics[log_file][b][m],
+                plt.plot(all_metrics[log_file][f"{b}_{m}"],
                          label=base_label, alpha=0.5)
                 plt.plot(running_mean(
-                    all_metrics[log_file][b][m], running_mean_lag), label=base_label+" smoothed")
+                    all_metrics[log_file][f"{b}_{m}"], running_mean_lag), label=base_label+" smoothed")
 
     plt.title('ROUGE scores')
     plt.legend()
@@ -370,75 +345,99 @@ def plot_training_metrics(log_files, running_mean_lag=100):
 
 
 def plot_metrics_pre_post_training(log_files):
-    metric_names = ['bleu',
-                    'bleu_precision',
-                    'rouge1',
-                    'rougeL',
-                    'bertscore_precision',
-                    'bertscore_recall',
-                    'bertscore_f1']
 
-    pre = {l: {
-        'bleu': [],
-        'bleu_precision': [],
-        'rouge1': [],
-        'rougeL': [],
-        'bertscore_precision': [],
-        'bertscore_recall': [],
-        'bertscore_f1': []
-    } for l in log_files}
-    post = copy.deepcopy(pre)
+    pre = {l: get_bleu_rouge_bert_metrics(
+        json.load(open(l))['validation']['pre']) for l in log_files}
+    post = {l: get_bleu_rouge_bert_metrics(
+        json.load(open(l))['validation']['post']) for l in log_files}
 
-    for l in log_files:
-        tmp = json.load(open(l))
-        metrics = {
-            'bleu': [],
-            'bleu_precision': [],
-            'rouge1': [],
-            'rougeL': [],
-            'bertscore_precision': [],
-            'bertscore_recall': [],
-            'bertscore_f1': []
-        }
-        for t in tmp['validation']['pre']:
-            if 'bleu' in t['bleu'].keys():
-                pre[l]['bleu'].append(t['bleu']['bleu'])
-                pre[l]['bleu_precision'].append(t['bleu']['precisions'][0])
-            pre[l]['rouge1'].append(t['rouge']['rouge1'][0][0])
-            pre[l]['rougeL'].append(t['rouge']['rougeL'][0][0])
-            pre[l]['bertscore_precision'].append(t['bert_precision'])
-            pre[l]['bertscore_recall'].append(t['bert_recall'])
-            pre[l]['bertscore_f1'].append(t['bert_F1'])
-
-        for t in tmp['validation']['post']:
-            if 'bleu' in t['bleu'].keys():
-                post[l]['bleu'].append(t['bleu']['bleu'])
-                post[l]['bleu_precision'].append(t['bleu']['precisions'][0])
-            post[l]['rouge1'].append(t['rouge']['rouge1'][0][0])
-            post[l]['rougeL'].append(t['rouge']['rougeL'][0][0])
-            post[l]['bertscore_precision'].append(t['bert_precision'])
-            post[l]['bertscore_recall'].append(t['bert_recall'])
-            post[l]['bertscore_f1'].append(t['bert_F1'])
-
-    pre_means = [[np.mean(pre[l][m]) for m in metric_names] for l in log_files]
-    post_means = [[np.mean(post[l][m]) for m in metric_names]
+    pre_means = [[np.mean(pre[l][m]) for m in METRICS] for l in log_files]
+    post_means = [[np.mean(post[l][m]) for m in METRICS]
                   for l in log_files]
 
-    width = 0.2
-    ind = list(range(len(metric_names)))
-    plt.bar([i-(3*width/2) for i in ind], pre_means[0], width,
-            label=f"{log_files[0].split('/')[-1]} pre")
-    plt.bar([i-(width/2) for i in ind], post_means[0], width,
-            label=f"{log_files[0].split('/')[-1]} post")
+    width = 0.4/len(log_files)
+    centers = np.arange(len(METRICS))
+    num_plots = 2*len(log_files)
 
-    plt.bar([i+(width/2) for i in ind], pre_means[1], width,
-            label=f"{log_files[1].split('/')[-1]} pre")
-    plt.bar([i+(3*width/2) for i in ind], post_means[1], width,
-            label=f"{log_files[1].split('/')[-1]} post")
+    for i in range(num_plots):
+        position = centers + (width*(1-num_plots)/2)+(i*width)
+        if i % 2 == 0:
+            plt.bar(position, pre_means[i % len(
+                log_files)], width, label=f"{log_files[0].split('/')[-1]} pre")
+        else:
+            plt.bar(position, post_means[i % len(
+                log_files)], width, label=f"{log_files[0].split('/')[-1]} post")
 
-    plt.xticks([i+width/2 for i in ind], metric_names, rotation=45)
+    plt.xticks(centers, METRICS, rotation=45)
+
     plt.legend()
     plt.show()
+
+
+def plot_test(log_files):
+    test_results = {l: get_bleu_rouge_bert_metrics(
+        json.load(open(l))['test']) for l in log_files}
+
+    test_means = [[np.mean(test_results[l][m])
+                   for m in METRICS] for l in log_files]
+
+    width = 0.4/len(log_files)
+    centers = np.arange(len(METRICS))
+    num_plots = len(log_files)
+
+    for i in range(num_plots):
+        position = centers + (width*(1-num_plots)/2)+(i*width)
+        plt.bar(position, test_means[i % len(
+            log_files)], width, label=f"{log_files[0].split('/')[-1]} test")
+
+    plt.xticks(centers, METRICS, rotation=45)
+
+    plt.legend()
+    plt.show()
+
+    return
+
+
+def get_bleu_rouge_bert_metrics(samples):
+    """Samples is a list of samples, each sample is a dict with each metric as a different key"""
+
+    metrics = {m: [] for m in METRICS}
+    for sample in samples:
+        # BLEU score
+        if 'bleu' in sample['bleu'].keys():
+            metrics['bleu'].append(sample['bleu']['bleu'])
+            metrics['bleu_precision'].append(
+                sample['bleu']['precisions'][0])
+        # ROUGE score
+        # ROUGE unigram
+        metrics['rouge1_precision'].append(
+            sample['rouge']['rouge1'][0][0])
+        metrics['rouge1_recall'].append(
+            sample['rouge']['rouge1'][0][1])
+        metrics['rouge1_F1'].append(
+            sample['rouge']['rouge1'][0][2])
+        # ROUGE bigram
+        metrics['rouge2_precision'].append(
+            sample['rouge']['rouge2'][0][0])
+        metrics['rouge2_recall'].append(
+            sample['rouge']['rouge2'][0][1])
+        metrics['rouge2_F1'].append(
+            sample['rouge']['rouge2'][0][2])
+        # ROUGE longest common subsequence
+        metrics['rougeL_precision'].append(
+            sample['rouge']['rougeL'][0][0])
+        metrics['rougeL_recall'].append(
+            sample['rouge']['rougeL'][0][1])
+        metrics['rougeL_F1'].append(
+            sample['rouge']['rougeL'][0][2])
+
+        # BERTSCORE
+        metrics['bertscore_precision'].append(
+            sample['bert_precision'])
+        metrics['bertscore_recall'].append(sample['bert_recall'])
+        metrics['bertscore_f1'].append(sample['bert_F1'])
+
+    return metrics
 
 
 def running_mean(x, N):
