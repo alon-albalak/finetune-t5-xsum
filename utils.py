@@ -126,37 +126,45 @@ def train(epoch, model, device, data_loader, optimizer,
             optimizer.zero_grad()
 
 
-# def train_fp16(epoch, model, device, data_loader, optimizer,
-#                gradient_accumulation_steps, logger=None, tokenizer=None):
+def train_fp16(epoch, model, device, data_loader, optimizer,
+               gradient_accumulation_steps, logger=None, tokenizer=None):
 
-#     scaler = GradScaler()
-#     model.train()
+    experiment_id = logger.logger['metadata']['model_path']
+    bleu_metric = datasets.load_metric('bleu', experiment_id=experiment_id)
+    rouge_metric = datasets.load_metric('rouge', experiment_id=experiment_id)
+    bertscore_metric = bertscore
 
-#     for i, data in enumerate(tqdm(data_loader), 1):
-#         y = data['target_ids'].to(device)
+    scaler = GradScaler()
+    model.train()
 
-#         x_ids = data['input_ids'].to(device)
-#         x_mask = data['input_mask'].to(device)
+    for i, data in enumerate(tqdm(data_loader), 1):
+        y = data['target_ids'].to(device)
 
-#         with autocast():
-#             outputs = model(input_ids=x_ids, attention_mask=x_mask,
-#                             labels=y)
-#             loss = outputs[0]
+        x_ids = data['input_ids'].to(device)
+        x_mask = data['input_mask'].to(device)
 
-#         if (i) % 10 == 0 and logger:
-#             logger.logger['training_loss'].append([f"epoch {i}", loss.item()])
+        with autocast():
+            outputs = model(input_ids=x_ids, attention_mask=x_mask,
+                            labels=y)
+            loss = outputs[0]
 
-#         if (i) % 500 == 0:
-#             print(f"Epoch: {i}, Loss: {loss.item()}")
-#             if logger:
-#                 logger.save()
+            if (i) % 10 == 0 and logger:
+                logger.logger['training_loss'].append(
+                    [f"epoch {i}", loss.item()])
 
-#         scaler.scale(loss).backward()
+            if (i) % 500 == 0:
+                logger.logger['training_loss'][-1].append(evaluate_batch(
+                    model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_metric))
+                logger.save()
+                model.train()
+                print(f"Epoch: {i}, Loss: {loss.item()}")
 
-#         if (i) % gradient_accumulation_steps == 0:
-#             scaler.step(optimizer)
-#             scaler.update()
-#             optimizer.zero_grad()
+        scaler.scale(loss).backward()
+
+        if (i) % gradient_accumulation_steps == 0:
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
 
 
 def validate(label, model, device, data_loader, tokenizer, logger):
