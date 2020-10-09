@@ -125,6 +125,8 @@ def train(epoch, model, device, data_loader, optimizer,
             optimizer.step()
             optimizer.zero_grad()
 
+    logger.save()
+
 
 def train_fp16(epoch, model, device, data_loader, optimizer,
                gradient_accumulation_steps, logger=None, tokenizer=None):
@@ -146,25 +148,37 @@ def train_fp16(epoch, model, device, data_loader, optimizer,
         with autocast():
             outputs = model(input_ids=x_ids, attention_mask=x_mask,
                             labels=y)
-            loss = outputs[0]
+            loss = outputs[0]/gradient_accumulation_steps
 
-            if (i) % 10 == 0 and logger:
+            if (i) % 10 == 0:
                 logger.logger['training_loss'].append(
                     [f"epoch {i}", loss.item()])
 
-            if (i) % 500 == 0:
-                logger.logger['training_loss'][-1].append(evaluate_batch(
-                    model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_metric))
-                logger.save()
-                model.train()
-                print(f"Epoch: {i}, Loss: {loss.item()}")
-
         scaler.scale(loss).backward()
 
-        if (i) % gradient_accumulation_steps == 0:
+        if (i % gradient_accumulation_steps) == 0:
+            # If clipping gradients
+            # scaler.unscale_(optimizer)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
+            torch.cuda.empty_cache()
+
+        # Prefer for this to happen ~ 500 batches, should be a multiple
+        #   of gradient_accumulation_steps to reduce memory footprint
+        if (i % (512)) == 0:
+            torch.cuda.empty_cache()
+            with torch.no_grad():
+                model.eval()
+                logger.logger['training_loss'][-1].append(evaluate_batch(
+                    model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_metric))
+            logger.save()
+            model.train()
+            print(f"Epoch: {i}, Loss: {loss.item()}")
+
+    logger.save()
 
 
 def validate(label, model, device, data_loader, tokenizer, logger):
@@ -221,17 +235,15 @@ def test(model, device, data_loader, tokenizer, logger):
 
 
 def evaluate_batch(model, y, x_ids, x_mask, tokenizer, docs, logger, bleu, rouge, bertscore):
-    model.eval()
-    with torch.no_grad():
-        generated_ids = model.generate(
-            input_ids=x_ids,
-            attention_mask=x_mask,
-            max_length=MAX_SUMMARY_LEN,
-            num_beams=DECODING_BEAMS,
-            repetition_penalty=2.5,
-            length_penalty=1,
-            early_stopping=True
-        )
+    generated_ids = model.generate(
+        input_ids=x_ids,
+        attention_mask=x_mask,
+        max_length=MAX_SUMMARY_LEN,
+        num_beams=DECODING_BEAMS,
+        repetition_penalty=2.5,
+        length_penalty=1,
+        early_stopping=True
+    )
 
     preds = [tokenizer.decode(
         g, skip_special_tokens=True, clean_up_tokenization_spaces=True) for g in generated_ids]

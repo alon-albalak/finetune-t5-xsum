@@ -39,7 +39,7 @@ def main(config):
 
     test_set = utils.XSUM_dataset(test_dataset, tokenizer)
     test_loader = DataLoader(
-        test_set, batch_size=MAX_GPU_SAMPLES*8, shuffle=False
+        test_set, batch_size=MAX_GPU_SAMPLES*4, shuffle=False
     )
     utils.test(model, device, test_loader,
                tokenizer, logger)
