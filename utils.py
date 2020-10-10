@@ -6,9 +6,10 @@ import torch
 from torch.utils.data import Dataset
 from torch.cuda.amp import GradScaler, autocast
 import datasets
-from bert_score import score as bertscore
+from bert_score import BERTScorer
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+
 
 MAX_SOURCE_LEN = 512
 MAX_SUMMARY_LEN = 150
@@ -95,7 +96,7 @@ def train(epoch, model, device, data_loader, optimizer,
     experiment_id = logger.logger['metadata']['model_path']
     bleu_metric = datasets.load_metric('bleu', experiment_id=experiment_id)
     rouge_metric = datasets.load_metric('rouge', experiment_id=experiment_id)
-    bertscore_metric = bertscore
+    bertscore_model = BERTScorer(lang='en')
 
     model.train()
     for i, data in enumerate(tqdm(data_loader), 1):
@@ -114,7 +115,7 @@ def train(epoch, model, device, data_loader, optimizer,
 
             if (i) % 500 == 0:
                 logger.logger['training_loss'][-1].append(evaluate_batch(
-                    model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_metric))
+                    model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_model))
                 logger.save()
                 model.train()
                 print(f"Epoch: {i}, Loss: {loss.item()}")
@@ -134,7 +135,7 @@ def train_fp16(epoch, model, device, data_loader, optimizer,
     experiment_id = logger.logger['metadata']['model_path']
     bleu_metric = datasets.load_metric('bleu', experiment_id=experiment_id)
     rouge_metric = datasets.load_metric('rouge', experiment_id=experiment_id)
-    bertscore_metric = bertscore
+    bertscore_model = BERTScorer(lang='en')
 
     scaler = GradScaler()
     model.train()
@@ -173,7 +174,7 @@ def train_fp16(epoch, model, device, data_loader, optimizer,
             with torch.no_grad():
                 model.eval()
                 logger.logger['training_loss'][-1].append(evaluate_batch(
-                    model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_metric))
+                    model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_model))
             logger.save()
             model.train()
             print(f"Epoch: {i}, Loss: {loss.item()}")
@@ -186,7 +187,7 @@ def validate(label, model, device, data_loader, tokenizer, logger):
     experiment_id = logger.logger['metadata']['model_path']
     bleu_metric = datasets.load_metric('bleu', experiment_id=experiment_id)
     rouge_metric = datasets.load_metric('rouge', experiment_id=experiment_id)
-    bertscore_metric = bertscore
+    bertscore_model = BERTScorer(lang='en')
 
     logger.logger['validation'][label] = []
 
@@ -200,7 +201,7 @@ def validate(label, model, device, data_loader, tokenizer, logger):
             x_mask = data['input_mask'].to(device)
 
             batch_evaluation = evaluate_batch(
-                model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_metric)
+                model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_model)
 
             logger.logger['validation'][label].extend(batch_evaluation)
 
@@ -213,7 +214,7 @@ def test(model, device, data_loader, tokenizer, logger):
     experiment_id = logger.logger['metadata']['model_path']
     bleu_metric = datasets.load_metric('bleu', experiment_id=experiment_id)
     rouge_metric = datasets.load_metric('rouge', experiment_id=experiment_id)
-    bertscore_metric = bertscore
+    bertscore_model = BERTScorer(lang='en')
 
     model.eval()
 
@@ -225,7 +226,7 @@ def test(model, device, data_loader, tokenizer, logger):
             x_mask = data['input_mask'].to(device)
 
             batch_evaluation = evaluate_batch(
-                model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_metric)
+                model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_model)
 
             logger.logger['test'].extend(batch_evaluation)
 
@@ -234,7 +235,7 @@ def test(model, device, data_loader, tokenizer, logger):
     logger.save()
 
 
-def evaluate_batch(model, y, x_ids, x_mask, tokenizer, docs, logger, bleu, rouge, bertscore):
+def evaluate_batch(model, y, x_ids, x_mask, tokenizer, docs, logger, bleu, rouge, bertscore_model):
     generated_ids = model.generate(
         input_ids=x_ids,
         attention_mask=x_mask,
@@ -278,8 +279,8 @@ def evaluate_batch(model, y, x_ids, x_mask, tokenizer, docs, logger, bleu, rouge
         r_score.append(rouge.compute(
             predictions=[pred], references=[ref]))
 
-    bs_score = bertscore(cands=r_preds,
-                         refs=r_refs, lang='en')
+    bs_score = bertscore_model(cands=r_preds,
+                               refs=r_refs)
     (P, R, F1) = bs_score
 
     # metadata should be organized by sample: document, summary, reference_summary, scores, etc.
