@@ -10,7 +10,7 @@ from bert_score import BERTScorer
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-
+MAX_GPU_SAMPLES = int(os.environ.get("MAX_GPU_SAMPLES"))
 MAX_SOURCE_LEN = 512
 MAX_SUMMARY_LEN = 150
 DECODING_BEAMS = 2
@@ -110,21 +110,25 @@ def train(epoch, model, device, data_loader, optimizer,
 
         loss = outputs[0]
 
-        if (i) % 10 == 0:
-            logger.logger['training_loss'].append([f"epoch {i}", loss.item()])
-
-            if (i) % 500 == 0:
-                logger.logger['training_loss'][-1].append(evaluate_batch(
-                    model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_model))
-                logger.save()
-                model.train()
-                print(f"Epoch: {i}, Loss: {loss.item()}")
-
         loss.backward()
 
-        if (i) % gradient_accumulation_steps == 0:
+        if (i % gradient_accumulation_steps) == 0:
             optimizer.step()
             optimizer.zero_grad()
+
+        if (i % (64/MAX_GPU_SAMPLES)) == 0:
+            logger.logger['training_loss'].append(
+                [f"epoch {i}", loss.item()*gradient_accumulation_steps])
+
+            if (i % (2048/MAX_GPU_SAMPLES)) == 0:
+                with torch.no_grad():
+                    model.eval()
+                    logger.logger['training_loss'][-1].append(evaluate_batch(
+                        model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_model))
+                logger.save()
+                model.train()
+                print(
+                    f"Epoch: {i}, Loss: {loss.item()*gradient_accumulation_steps}")
 
     logger.save()
 
@@ -141,6 +145,7 @@ def train_fp16(epoch, model, device, data_loader, optimizer,
     model.train()
 
     for i, data in enumerate(tqdm(data_loader), 1):
+
         y = data['target_ids'].to(device)
 
         x_ids = data['input_ids'].to(device)
@@ -150,10 +155,6 @@ def train_fp16(epoch, model, device, data_loader, optimizer,
             outputs = model(input_ids=x_ids, attention_mask=x_mask,
                             labels=y)
             loss = outputs[0]/gradient_accumulation_steps
-
-            if (i) % 10 == 0:
-                logger.logger['training_loss'].append(
-                    [f"epoch {i}", loss.item()])
 
         scaler.scale(loss).backward()
 
@@ -165,19 +166,22 @@ def train_fp16(epoch, model, device, data_loader, optimizer,
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
-            torch.cuda.empty_cache()
 
         # Prefer for this to happen ~ 500 batches, should be a multiple
         #   of gradient_accumulation_steps to reduce memory footprint
-        if (i % (512)) == 0:
-            torch.cuda.empty_cache()
-            with torch.no_grad():
-                model.eval()
-                logger.logger['training_loss'][-1].append(evaluate_batch(
-                    model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_model))
-            logger.save()
-            model.train()
-            print(f"Epoch: {i}, Loss: {loss.item()}")
+        if (i % (64/MAX_GPU_SAMPLES)) == 0:
+            logger.logger['training_loss'].append(
+                [f"epoch {i}", loss.item()*gradient_accumulation_steps])
+
+            if (i % (2048/MAX_GPU_SAMPLES)) == 0:
+                with torch.no_grad():
+                    model.eval()
+                    logger.logger['training_loss'][-1].append(evaluate_batch(
+                        model, y, x_ids, x_mask, tokenizer, data['document'], logger, bleu_metric, rouge_metric, bertscore_model))
+                logger.save()
+                model.train()
+                print(
+                    f"Epoch: {i}, Loss: {loss.item()*gradient_accumulation_steps}")
 
     logger.save()
 
@@ -246,8 +250,7 @@ def evaluate_batch(model, y, x_ids, x_mask, tokenizer, docs, logger, bleu, rouge
         early_stopping=True
     )
 
-    preds = [tokenizer.decode(
-        g, skip_special_tokens=True, clean_up_tokenization_spaces=True) for g in generated_ids]
+    preds = [tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=True) for g in generated_ids]
     targets = [tokenizer.decode(
         t, skip_special_tokens=True, clean_up_tokenization_spaces=True) for t in y]
 
@@ -276,11 +279,11 @@ def evaluate_batch(model, y, x_ids, x_mask, tokenizer, docs, logger, bleu, rouge
             continue
 
     for ref, pred in zip(r_refs, r_preds):
-        r_score.append(rouge.compute(
-            predictions=[pred], references=[ref]))
+        r_score.append(rouge.compute(rouge_types=["rouge1", "rouge2", "rougeL"],
+                                     predictions=[pred], references=[ref]))
 
-    bs_score = bertscore_model(cands=r_preds,
-                               refs=r_refs)
+    bs_score = bertscore_model.score(cands=r_preds,
+                                     refs=r_refs)
     (P, R, F1) = bs_score
 
     # metadata should be organized by sample: document, summary, reference_summary, scores, etc.

@@ -35,12 +35,12 @@ def main(config):
 
     train_set = utils.XSUM_dataset(train_dataset, tokenizer)
     training_loader = DataLoader(
-        train_set, batch_size=MAX_GPU_SAMPLES, shuffle=True
+        train_set, batch_size=MAX_GPU_SAMPLES, shuffle=True, num_workers=4, pin_memory=True
     )
     if config.validate:
         validation_set = utils.XSUM_dataset(validation_dataset, tokenizer)
         validation_loader = DataLoader(
-            validation_set, batch_size=MAX_GPU_SAMPLES*8, shuffle=False
+            validation_set, batch_size=MAX_GPU_SAMPLES*8, shuffle=False, num_workers=4, pin_memory=True
         )
         utils.validate("pre", model, device, validation_loader,
                        tokenizer, logger)
@@ -67,14 +67,14 @@ def main(config):
     if config.validate:
         validation_set = utils.XSUM_dataset(validation_dataset, tokenizer)
         validation_loader = DataLoader(
-            validation_set, batch_size=MAX_GPU_SAMPLES*4, shuffle=False
+            validation_set, batch_size=MAX_GPU_SAMPLES*8, shuffle=False, num_workers=4, pin_memory=True
         )
         utils.validate("post", model, device, validation_loader,
                        tokenizer, logger)
 
     test_set = utils.XSUM_dataset(test_dataset, tokenizer)
     test_loader = DataLoader(
-        test_set, batch_size=MAX_GPU_SAMPLES*8, shuffle=False)
+        test_set, batch_size=MAX_GPU_SAMPLES*4, shuffle=False, num_workers=4, pin_memory=True)
     utils.test(model, device, test_loader, tokenizer, logger)
 
 
